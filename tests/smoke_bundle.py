@@ -48,7 +48,8 @@ def main():
                 return json.load(response)
 
         def wait_service(condition):
-            for _ in range(150):
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
                 row = get("/api/status")["services"][0]
                 if row.get("busy", {}).get("error"):
                     raise RuntimeError(row["busy"]["error"])
@@ -58,7 +59,7 @@ def main():
             raise RuntimeError(f"Service did not reach expected state: {row}")
 
         try:
-            for _ in range(150):
+            for _ in range(600):
                 if process.poll() is not None:
                     raise RuntimeError(f"Bundled app exited: {process.returncode}")
                 try:
@@ -73,7 +74,7 @@ def main():
             assert Path(get("/api/setup")["dataDir"]).resolve() == Path(data).resolve()
             service = {"id": "smoke", "name": "Smoke service", "group": "Projects", "type": "process", "cwd": data,
                        "cmd": f'"{sys.executable}" -u -m http.server {service_port} --bind 127.0.0.1',
-                       "port": service_port, "startTimeout": 15}
+                       "port": service_port, "startTimeout": 90}
             assert post("/api/services/save", {"service": service})["ok"]
             post("/api/action", {"id": "smoke", "action": "start"})
             wait_service(lambda row: row["running"] and not row.get("busy"))

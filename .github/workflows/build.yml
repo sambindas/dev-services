@@ -15,6 +15,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, windows-latest, macos-14, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,11 +76,11 @@ jobs:
       - name: Check assets and create checksums
         shell: bash
         run: |
-          test -f release-assets/DevServices-0.2.0-Windows-Setup.exe
-          test -f release-assets/DevServices-0.2.0-macOS-arm64.dmg
-          test -f release-assets/DevServices-0.2.0-macOS-x86_64.dmg
-          test -f release-assets/dev-services_0.2.0_amd64.deb
-          test -f release-assets/DevServices-0.2.0-Linux-x86_64.tar.gz
+          test -f release-assets/DevServices-0.2.1-Windows-Setup.exe
+          test -f release-assets/DevServices-0.2.1-macOS-arm64.dmg
+          test -f release-assets/DevServices-0.2.1-macOS-x86_64.dmg
+          test -f release-assets/dev-services_0.2.1_amd64.deb
+          test -f release-assets/DevServices-0.2.1-Linux-x86_64.tar.gz
           cd release-assets
           sha256sum *.dmg *.exe *.deb *.tar.gz > SHA256SUMS.txt
       - name: Publish downloadable preview

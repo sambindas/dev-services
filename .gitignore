@@ -11,3 +11,4 @@ processes.json
 .env
 .env.*
 .DS_Store
+packaging/preview.png

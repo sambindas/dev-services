@@ -137,13 +137,21 @@ class ProcessManager:
                     except psutil.NoSuchProcess:
                         pass
                 _, alive = psutil.wait_procs(processes, timeout=8)
+                # Reparented children can remain zombies until the OS reaps them.
+                # A zombie has exited and must not make stop/restart report failure.
+                def still_active(proc):
+                    try:
+                        return proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE
+                    except psutil.NoSuchProcess:
+                        return False
+                alive = [proc for proc in alive if still_active(proc)]
                 for proc in alive:
                     try:
                         proc.kill()
                     except psutil.NoSuchProcess:
                         pass
                 _, alive = psutil.wait_procs(alive, timeout=3)
-                if alive:
+                if any(still_active(proc) for proc in alive):
                     raise RuntimeError("Some service processes could not be stopped.")
             except psutil.NoSuchProcess:
                 pass

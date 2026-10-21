@@ -529,7 +529,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
         if u.path == "/api/health":
-            return self._send(200, {"app": "dev-services", "version": "0.2.0"})
+            return self._send(200, {"app": "dev-services", "version": "0.2.1"})
         if u.path == "/api/setup":
             return self._send(200, {"platform": runtime.SYSTEM, "tools": runtime.tools(ENV),
                                     "dataDir": str(DATA_DIR), "shell": os.environ.get("COMSPEC", "cmd.exe") if runtime.SYSTEM == "Windows" else runtime.shell_command("")[0]})

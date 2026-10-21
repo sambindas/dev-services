@@ -2,11 +2,11 @@ An early preview of Dev Services: a local dashboard for project commands and exi
 
 ## Choose your download
 
-- **Windows x64:** `DevServices-0.2.0-Windows-Setup.exe`
-- **macOS Apple Silicon:** `DevServices-0.2.0-macOS-arm64.dmg`
-- **macOS Intel:** `DevServices-0.2.0-macOS-x86_64.dmg`
-- **Ubuntu/Debian x64:** `dev-services_0.2.0_amd64.deb`
-- **Other Linux x64 (glibc 2.35+):** `DevServices-0.2.0-Linux-x86_64.tar.gz`
+- **Windows x64:** `DevServices-0.2.1-Windows-Setup.exe`
+- **macOS Apple Silicon:** `DevServices-0.2.1-macOS-arm64.dmg`
+- **macOS Intel:** `DevServices-0.2.1-macOS-x86_64.dmg`
+- **Ubuntu/Debian x64:** `dev-services_0.2.1_amd64.deb`
+- **Other Linux x64 (glibc 2.35+):** `DevServices-0.2.1-Linux-x86_64.tar.gz`
 
 The installers bundle Python. Install your project's runtime or Docker separately, launch Dev Services, then use **Setup guide** and **Add service**. The dashboard opens at http://127.0.0.1:7777 and stays on your computer.
 

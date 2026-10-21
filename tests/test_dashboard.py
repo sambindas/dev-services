@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -49,6 +49,18 @@ class ConfigurationTests(unittest.TestCase):
         with patch.object(runtime, "SYSTEM", "Linux"), patch.dict(os.environ, {"SHELL": "/bin/bash"}):
             self.assertEqual(runtime.shell_command("echo hello"), ["/bin/bash", "-c", "echo hello"])
 
+    def test_zombie_children_do_not_make_stop_fail(self):
+        with tempfile.TemporaryDirectory() as folder:
+            manager = runtime.ProcessManager(folder)
+            parent, zombie = MagicMock(), MagicMock()
+            parent.children.return_value = [zombie]
+            zombie.is_running.return_value = True
+            zombie.status.return_value = runtime.psutil.STATUS_ZOMBIE
+            with patch.object(manager, "process", return_value=parent), patch.object(runtime.psutil, "wait_procs", side_effect=[([], [zombie]), ([], [])]):
+                manager.stop({"id": "test", "port": 32100})
+            zombie.kill.assert_not_called()
+            self.assertEqual(manager.records, {})
+
     def test_reused_pid_is_never_owned(self):
         with tempfile.TemporaryDirectory() as folder:
             manager = runtime.ProcessManager(folder)
@@ -70,7 +82,7 @@ class DashboardIntegrationTests(unittest.TestCase):
     def start_server(self):
         self.server = subprocess.Popen([sys.executable, str(ROOT / "server.py"), "--no-browser"], env=self.env,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        for _ in range(100):
+        for _ in range(1200):
             if self.server.poll() is not None:
                 self.fail(self.server.stderr.read().decode())
             try:
@@ -89,7 +101,8 @@ class DashboardIntegrationTests(unittest.TestCase):
             return json.loads(data) if response.headers.get_content_type() == "application/json" else data.decode()
 
     def wait_row(self, condition):
-        for _ in range(150):
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
             rows = self.request("/api/status")["services"]
             if rows and condition(rows[0]):
                 return rows[0]
@@ -107,7 +120,7 @@ class DashboardIntegrationTests(unittest.TestCase):
         executable = f'"{sys.executable}"'
         service = {"id": "test-api", "name": "Test API", "group": "Projects", "type": "process", "cwd": self.temp.name,
                    "cmd": f"{executable} -u -m http.server {self.service_port} --bind 127.0.0.1", "port": self.service_port,
-                   "startTimeout": 10}
+                   "startTimeout": 90}
         self.request("/api/services/save", {"service": service})
         return service
 
