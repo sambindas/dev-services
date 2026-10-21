@@ -10,7 +10,7 @@ Download the **unsigned preview installers** from [GitHub Releases](https://gith
 | --- | --- | --- |
 | macOS Apple Silicon / Intel | `.dmg` | Open the matching image, drag DevServices to Applications, then open it. |
 | Windows x64 | `Windows-Setup.exe` | Run the installer as your normal user, then open Dev Services from Start. |
-| Ubuntu/Debian x64 | `.deb` | Install with `sudo apt install ./dev-services_0.2.1_amd64.deb`, then open Dev Services from the applications menu. |
+| Ubuntu/Debian x64 | `.deb` | Install with `sudo apt install ./dev-services_0.2.2_amd64.deb`, then open Dev Services from the applications menu. |
 | Other Linux x64 | `.tar.gz` | Extract it, then run `DevServices/DevServices`. Requires glibc 2.35 or newer; not an Alpine/musl package. |
 
 Python is bundled in these packages. Project runtimes and Docker are installed separately. Preview packages are not signed/notarized yet; Windows and macOS may display publisher warnings. Public distribution needs signing credentials and native-machine verification before calling the installers stable. Linux RPM and ARM Linux/Windows builds are not provided yet.

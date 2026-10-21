@@ -76,11 +76,11 @@ jobs:
       - name: Check assets and create checksums
         shell: bash
         run: |
-          test -f release-assets/DevServices-0.2.1-Windows-Setup.exe
-          test -f release-assets/DevServices-0.2.1-macOS-arm64.dmg
-          test -f release-assets/DevServices-0.2.1-macOS-x86_64.dmg
-          test -f release-assets/dev-services_0.2.1_amd64.deb
-          test -f release-assets/DevServices-0.2.1-Linux-x86_64.tar.gz
+          test -f release-assets/DevServices-0.2.2-Windows-Setup.exe
+          test -f release-assets/DevServices-0.2.2-macOS-arm64.dmg
+          test -f release-assets/DevServices-0.2.2-macOS-x86_64.dmg
+          test -f release-assets/dev-services_0.2.2_amd64.deb
+          test -f release-assets/DevServices-0.2.2-Linux-x86_64.tar.gz
           cd release-assets
           sha256sum *.dmg *.exe *.deb *.tar.gz > SHA256SUMS.txt
       - name: Publish downloadable preview

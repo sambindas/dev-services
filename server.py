@@ -529,7 +529,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
         if u.path == "/api/health":
-            return self._send(200, {"app": "dev-services", "version": "0.2.1"})
+            return self._send(200, {"app": "dev-services", "version": "0.2.2"})
         if u.path == "/api/setup":
             return self._send(200, {"platform": runtime.SYSTEM, "tools": runtime.tools(ENV),
                                     "dataDir": str(DATA_DIR), "shell": os.environ.get("COMSPEC", "cmd.exe") if runtime.SYSTEM == "Windows" else runtime.shell_command("")[0]})
@@ -555,8 +555,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, {"error": "forbidden"})
         path = urlparse(self.path).path
         if path == "/api/quit":
+            # Complete the response before serve_forever() can return and exit
+            # the process; request-handler threads are daemon threads.
+            self._send(200, {"ok": True})
+            self.wfile.flush()
             threading.Thread(target=self.server.shutdown, daemon=True).start()
-            return self._send(200, {"ok": True})
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             if length < 0 or length > 65536:

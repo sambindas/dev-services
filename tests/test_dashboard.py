@@ -213,6 +213,20 @@ class DockerAdapterTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
+    def test_quit_flushes_response_before_shutdown(self):
+        handler = self.dashboard.Handler.__new__(self.dashboard.Handler)
+        handler.headers = {"Host": "127.0.0.1", "X-Dashboard": "1"}
+        handler.path = "/api/quit"
+        handler.server = MagicMock()
+        handler.wfile = MagicMock()
+        events = []
+        handler._send = lambda code, body: events.append("response")
+        handler.wfile.flush.side_effect = lambda: events.append("flush")
+        with patch.object(self.dashboard.threading, "Thread") as thread:
+            thread.return_value.start.side_effect = lambda: events.append("shutdown")
+            handler._post()
+        self.assertEqual(events, ["response", "flush", "shutdown"])
+
     def test_container_name_and_id_are_resolved(self):
         ident = "abcdef1234567890"
         results = [(0, f"{ident}|my-db\n"), (0, f"{ident}|/my-db|running|2026-10-20T10:00:00Z\n")]
