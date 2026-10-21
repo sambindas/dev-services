@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Dev Services
+Comment=Manage local projects and Docker containers
+Exec=/opt/dev-services/DevServices
+Terminal=false
+Categories=Development;

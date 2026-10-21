@@ -1,0 +1,88 @@
+name: Test, build, and release
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-14, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements-build.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Install Windows installer compiler
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - run: python packaging/build.py --package
+      - name: Smoke test bundled app and service controls
+        run: python tests/smoke_bundle.py
+      - name: Smoke test macOS app bundle
+        if: runner.os == 'macOS'
+        run: python tests/smoke_bundle.py --app
+      - name: Verify macOS disk image
+        if: runner.os == 'macOS'
+        run: hdiutil verify dist/*.dmg
+      - name: Install and test Linux package
+        if: runner.os == 'Linux'
+        run: |
+          sudo dpkg -i dist/*.deb
+          python tests/smoke_bundle.py --executable /opt/dev-services/DevServices
+      - name: Install and test Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist/*Setup.exe | Select-Object -First 1
+          $installDir = Join-Path $env:RUNNER_TEMP 'DevServices-install'
+          $result = Start-Process -FilePath $installer.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=$installDir") -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Installer failed: $($result.ExitCode)" }
+          python tests/smoke_bundle.py --executable "$installDir\DevServices.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DevServices-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*Setup.exe
+            dist/*.deb
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Check assets and create checksums
+        shell: bash
+        run: |
+          test -f release-assets/DevServices-0.2.0-Windows-Setup.exe
+          test -f release-assets/DevServices-0.2.0-macOS-arm64.dmg
+          test -f release-assets/DevServices-0.2.0-macOS-x86_64.dmg
+          test -f release-assets/dev-services_0.2.0_amd64.deb
+          test -f release-assets/DevServices-0.2.0-Linux-x86_64.tar.gz
+          cd release-assets
+          sha256sum *.dmg *.exe *.deb *.tar.gz > SHA256SUMS.txt
+      - name: Publish downloadable preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --prerelease --title "Dev Services $GITHUB_REF_NAME (Preview)" --notes-file docs/release-notes.md

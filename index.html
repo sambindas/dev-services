@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dev Services</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1a1d23; --muted: #6b7280; --line: #e5e7eb;
+    --up: #16a34a; --down: #9ca3af; --warn: #d97706; --err: #dc2626; --accent: #2563eb;
+    --btn: #f3f4f6; --btn-hover: #e5e7eb; --code: #0f172a; --code-text: #e2e8f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #171a21; --text: #e6e8ec; --muted: #8b93a1; --line: #262b35;
+      --up: #22c55e; --down: #5b6270; --warn: #f59e0b; --err: #f87171; --accent: #60a5fa;
+      --btn: #222733; --btn-hover: #2c3240; --code: #0b0d12; --code-text: #cbd5e1;
+    }
+  }
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 16px 60px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .summary { color: var(--muted); font-size: 13px; }
+  .summary b { color: var(--text); font-weight: 600; }
+  .conn { font-size: 12px; color: var(--muted); }
+  .head-right { display: flex; align-items: center; gap: 12px; }
+  #start-all, #stop-all { padding: 7px 14px; font-weight: 600; }
+  .conn.bad { color: var(--err); }
+  section { margin-bottom: 22px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px 4px; font-weight: 600; }
+  .list { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .row { display: grid; grid-template-columns: 22px minmax(0, 1.6fr) 70px minmax(0, 1.3fr) auto; gap: 14px;
+         align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row.planned { opacity: .55; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--down); justify-self: center; }
+  .dot.up { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 22%, transparent); }
+  .dot.busy { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
+  .dot.err { background: var(--err); }
+  .dot.planned { background: transparent; border: 1.5px dashed var(--down); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name a { color: var(--accent); text-decoration: none; font-weight: 500; font-size: 12.5px; margin-left: 8px; }
+  .name a:hover { text-decoration: underline; }
+  .notes { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .port { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  .state { font-size: 13px; min-width: 0; }
+  .state .main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .state .sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .state .error { color: var(--err); font-size: 12px; white-space: normal; }
+  .actions { display: flex; gap: 6px; justify-content: flex-end; }
+  button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--btn); color: var(--text);
+           padding: 5px 11px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { background: var(--btn-hover); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px dashed var(--down); color: var(--muted); }
+  dialog { width: min(900px, calc(100vw - 32px)); max-height: 80vh; padding: 0; border: 1px solid var(--line);
+           border-radius: 12px; background: var(--panel); color: var(--text); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .dlg-head h3 { margin: 0; font-size: 15px; }
+  .dlg-head { gap: 12px; }
+  .dlg-head .actions { margin-left: auto; }
+  .live { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--down); }
+  .live.on::before { background: var(--up); animation: pulse 1.6s ease-in-out infinite; }
+  .live.paused::before { background: var(--warn); }
+  .live.off::before { background: var(--err); }
+  pre .note { color: #94a3b8; font-style: italic; }
+  pre { margin: 0; padding: 14px 16px; background: var(--code); color: var(--code-text); font: 12px/1.5 ui-monospace, Menlo, monospace;
+        overflow: auto; max-height: calc(80vh - 56px); white-space: pre-wrap; word-break: break-all; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 26px; }
+  code { font: 12px ui-monospace, Menlo, monospace; }
+  .form-body { padding: 20px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  label { display: grid; gap: 5px; font-weight: 600; }
+  input, select, textarea { width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; }
+  label small, .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .wide { grid-column: 1 / -1; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .form-error { color: var(--err); white-space: pre-wrap; }
+  .empty { padding: 36px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; }
+  .empty h2 { font-size: 18px; text-transform: none; color: var(--text); }
+  #guide-body { padding: 4px 22px 22px; }
+  #guide-body h4 { margin-bottom: 6px; }
+  #setup-info { white-space: pre-wrap; overflow-wrap: anywhere; }
+  @media (max-width: 760px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .head-right { flex-wrap: wrap; }
+    .actions { flex-wrap: wrap; }
+    .row { grid-template-columns: 18px minmax(0, 1fr) auto; grid-template-areas: "dot name port" "dot state state" "dot actions actions"; row-gap: 6px; }
+    .row > .dot { grid-area: dot; align-self: start; margin-top: 5px; }
+    .row > .info { grid-area: name; } .row > .port { grid-area: port; } .row > .state { grid-area: state; }
+    .row > .actions { grid-area: actions; justify-content: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Dev Services</h1>
+      <div class="summary" id="summary">Loading…</div>
+    </div>
+    <div class="head-right">
+      <div class="conn" id="conn"></div>
+      <button id="guide-open">Setup guide</button>
+      <button id="add-service" class="primary">Add service</button>
+      <button id="stop-all" disabled>Stop all</button>
+      <button id="start-all" class="primary" disabled>Start all</button>
+    </div>
+  </header>
+  <main id="groups"></main>
+  <footer>
+    Services run on this computer. Status refreshes every 4 seconds.
+    <button id="quit">Quit dashboard</button>
+  </footer>
+</div>
+
+<dialog id="service-dialog" aria-labelledby="service-title">
+  <div class="dlg-head"><h3 id="service-title">Add a service</h3><button type="button" id="service-close">Close</button></div>
+  <form id="service-form" class="form-body">
+    <p class="hint">Choose a project command or an existing Docker container. Saving does not start it.</p>
+    <div class="form-grid">
+      <label>Name<input name="name" required maxlength="120" placeholder="My API"></label>
+      <label>Service ID<input name="id" required pattern="[a-z0-9][a-z0-9_-]{0,63}" maxlength="64" placeholder="my-api"><small>Unique, lowercase; cannot change after saving.</small></label>
+      <label>Service type<select name="type"><option value="process">Project command</option><option value="docker">Docker container</option></select></label>
+      <label>Group<input name="group" required value="Projects" list="group-options"><datalist id="group-options"></datalist></label>
+      <label data-process class="wide">Project folder<input name="cwd" placeholder="Absolute path to your project"><small>On this computer: /Users/you/project, /home/you/project, or C:\Users\you\project</small></label>
+      <label data-process class="wide">Start command<input name="cmd" placeholder="npm run dev -- --port 3000"><small>Keep the command in the foreground. Use tools installed on this machine.</small></label>
+      <label data-docker class="wide" hidden>Container name<input name="container" placeholder="my-postgres"><small>Create the container and publish its port first. Find its name with docker ps -a.</small></label>
+      <label>Local port<input name="port" type="number" min="1" max="65535" required placeholder="3000"><small>Use the host port for Docker, e.g. 5432 for -p 5432:5432.</small></label>
+      <label>Startup timeout (seconds)<input name="startTimeout" type="number" min="1" max="600" value="90" required></label>
+      <label class="wide">Open URL (optional)<input name="url" type="url" placeholder="http://localhost:3000"></label>
+      <label class="wide">Notes (optional)<textarea name="notes" rows="2" placeholder="What this service does or which runtime it needs"></textarea></label>
+    </div>
+    <p class="hint">Commands run with your user account's permissions. Only add commands you trust. The dashboard does not install project dependencies.</p>
+    <div id="service-error" class="form-error" role="alert"></div>
+    <div class="form-actions"><button type="button" id="service-delete">Remove service</button><button type="submit" id="service-save" class="primary">Save service</button></div>
+  </form>
+</dialog>
+
+<dialog id="guide" aria-labelledby="guide-title">
+  <div class="dlg-head"><h3 id="guide-title">Set up your first service</h3><button id="guide-close">Close</button></div>
+  <div id="guide-body">
+    <h4>1. Prepare your project</h4>
+    <p>Install its runtime (such as Node, Python, PHP, or .NET) and dependencies. Verify that its start command works from the project folder in a terminal.</p>
+    <h4>2. Add it to the dashboard</h4>
+    <p>Choose <b>Add service → Project command</b>. Enter an absolute folder path, the working start command, and the port it listens on. Save, then select Start.</p>
+    <p>For Node, try <code>npm run dev -- --port 3000</code> if your framework supports it. For a simple Python folder server, use <code>python3 -m http.server 8000</code> on macOS/Linux or <code>python -m http.server 8000</code> on Windows.</p>
+    <h4>3. Or connect a Docker container</h4>
+    <p>Install and start Docker. Create a container with a published host port, then add its existing name and host port here. The dashboard starts and stops containers; it does not create or delete them.</p>
+    <h4>Platform details</h4>
+    <p>Windows commands use cmd.exe. macOS/Linux commands use your configured shell. If a command needs nvm or another version manager, load it in the start command or use an absolute executable path. Relaunch after installing new tools.</p>
+    <h4>Troubleshooting</h4>
+    <p>Check Logs after a failed start. A port conflict means you need another port or must stop the existing process. Processes started outside the dashboard must first be stopped in their original terminal. Stop services before editing or removing them.</p>
+    <p>Your configuration and logs stay on this computer. Closing the browser leaves the dashboard running. Quit dashboard stops its controller; managed services keep running and reconnect when you reopen it.</p>
+    <h4>This computer</h4><p id="setup-info" class="hint">Loading…</p>
+  </div>
+</dialog>
+
+<dialog id="logs">
+  <div class="dlg-head"><h3 id="logs-title">Logs</h3>
+    <span class="live" id="logs-live"></span>
+    <div class="actions"><button id="logs-pause">Pause</button><button id="logs-clear">Clear</button><button id="logs-close">Close</button></div></div>
+  <pre id="logs-body"></pre>
+</dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let data = null, skew = 0, logsId = null;
+
+const VERB = { start: "Starting", restart: "Restarting", stop: "Stopping" };
+
+function fmtDuration(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+function fmtSince(epoch) {
+  const dt = new Date(epoch * 1000), now = new Date();
+  const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return dt.toDateString() === now.toDateString() ? `today ${time}`
+    : `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+}
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function stateHtml(s) {
+  if (s.unsupported || s.external) return `<div class="main">${s.unsupported ? "Unavailable" : "Port in use"}</div><div class="sub">${esc(s.detail)}</div>`;
+  if (s.planned) return `<div class="main"><span class="badge">planned</span></div><div class="sub">${esc(s.detail)}</div>`;
+  if (s.busy && !s.busy.done) {
+    const t = (Date.now() / 1000 + skew) - s.busy.since;
+    return `<div class="main">${VERB[s.busy.action]}… <span class="sub">${fmtDuration(t)}</span></div><div class="sub">${esc(s.detail)}</div>`;
+  }
+  let html = s.running
+    ? `<div class="main">Running · <span data-up="${s.since ?? ""}">${s.since ? fmtDuration(Date.now() / 1000 + skew - s.since) : "?"}</span></div>
+       <div class="sub">${s.since ? "since " + fmtSince(s.since) : ""}${s.detail ? " · " + esc(s.detail) : ""}</div>`
+    : `<div class="main">${s.managed ? "Process active" : "Stopped"}</div><div class="sub">${esc(s.detail)}</div>`;
+  if (s.busy && s.busy.error) html += `<div class="error">${VERB[s.busy.action]} failed: ${esc(s.busy.error)}</div>`;
+  return html;
+}
+
+function dotClass(s) {
+  if (s.planned) return "planned";
+  if (s.busy && !s.busy.done) return "busy";
+  if (s.busy && s.busy.error) return "err";
+  return s.running ? "up" : "";
+}
+
+function render() {
+  const groups = [...data.groups];
+  data.services.forEach((s) => { if (!groups.includes(s.group)) groups.push(s.group); });
+  const live = data.services.filter((s) => !s.planned && !s.unsupported && !s.external);
+  const up = live.filter((s) => s.running).length;
+  $("#summary").innerHTML = `<b>${up}</b> of <b>${live.length}</b> running` +
+    (data.services.length > live.length ? ` · ${data.services.length - live.length} planned` : "");
+  const stopped = live.filter((s) => !s.running && !(s.busy && !s.busy.done) && !s.managed).length;
+  const running = live.filter((s) => (s.running || s.managed) && !(s.busy && !s.busy.done)).length;
+  const btn = $("#start-all"), stopBtn = $("#stop-all");
+  btn.disabled = !!data.bulk || stopped === 0;
+  btn.textContent = data.bulk === "start" ? "Starting all…" : stopped ? `Start all (${stopped} stopped)` : (live.length && up === live.length ? "All running" : "Start all");
+  stopBtn.disabled = !!data.bulk || running === 0;
+  stopBtn.textContent = data.bulk === "stop" ? "Stopping all…" : running ? `Stop all (${running})` : "All stopped";
+
+  $("#groups").innerHTML = groups.map((g) => {
+    const items = data.services.filter((s) => s.group === g);
+    if (!items.length) return "";
+    return `<section><h2>${esc(g)}</h2><div class="list">${items.map((s) => {
+      const working = s.busy && !s.busy.done;
+      const btns = s.planned || s.unsupported || s.external ? "" : `
+        ${s.running || s.managed
+          ? `<button data-act="restart" data-id="${esc(s.id)}" class="primary" ${working ? "disabled" : ""}>Restart</button>
+             <button data-act="stop" data-id="${esc(s.id)}" ${working ? "disabled" : ""}>Stop</button>`
+          : `<button data-act="start" data-id="${esc(s.id)}" class="primary" ${working ? "disabled" : ""}>Start</button>`}
+        ${s.type === "app" ? "" : `<button data-logs="${esc(s.id)}">Logs</button>`}`;
+      return `<div class="row ${s.planned ? "planned" : ""}">
+        <span class="dot ${dotClass(s)}" title="${s.running ? "running" : "stopped"}"></span>
+        <div class="info"><div class="name">${esc(s.name)}${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url.replace(/^https?:\/\//, ""))} ↗</a>` : ""}</div>
+          <div class="notes">${esc(s.notes)}</div></div>
+        <div class="port">${s.port ? ":" + s.port : ""}</div>
+        <div class="state">${stateHtml(s)}</div>
+        <div class="actions">${btns}${s.editable ? `<button data-edit="${esc(s.id)}" ${working || s.running || s.managed ? "disabled" : ""}>Edit</button>` : ""}</div>
+      </div>`;
+    }).join("")}</div></section>`;
+  }).join("");
+  if (!data.services.length) $("#groups").innerHTML = `<div class="empty"><h2>Your services, in one place</h2><p>Add a project or Docker container to see its status, controls, and logs here.</p><button class="primary" data-add="1">Add your first service</button></div>`;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/status", { cache: "no-store" });
+    if (!r.ok) throw new Error("Status request failed");
+    data = await r.json();
+    skew = data.now - Date.now() / 1000;
+    $("#conn").textContent = "Updated " + new Date().toLocaleTimeString();
+    $("#conn").className = "conn";
+    render();
+  } catch (e) {
+    $("#conn").textContent = "Dashboard disconnected. Open Dev Services to reconnect.";
+    $("#conn").className = "conn bad";
+  }
+}
+
+async function act(id, action) {
+  const s = data.services.find((x) => x.id === id);
+  if (action === "stop" && !confirm(`Stop ${s.name}?`)) return;
+  try { await api("/api/action", { id, action }); await refresh(); }
+  catch (error) { alert(error.message); }
+}
+
+// ---- live logs (server-sent events) ----
+const MAX_LINES = 5000;
+let es = null, paused = false, held = [], shown = 0;
+
+function setLive(state, text) {
+  const el = $("#logs-live");
+  el.className = "live " + state;
+  el.textContent = text;
+}
+
+function appendLines(lines) {
+  const pre = $("#logs-body");
+  const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+  pre.appendChild(document.createTextNode(lines.join("\n") + "\n"));
+  shown += lines.length;
+  if (shown > MAX_LINES * 1.2) {  // keep the browser fast on chatty services
+    const keep = pre.textContent.split("\n").slice(-MAX_LINES);
+    pre.textContent = keep.join("\n");
+    shown = keep.length;
+  }
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+function appendNote(text) {
+  const span = document.createElement("span");
+  span.className = "note";
+  span.textContent = `— ${text} —\n`;
+  $("#logs-body").appendChild(span);
+}
+
+function updatePauseLabel() {
+  $("#logs-pause").textContent = paused ? (held.length ? `Resume (${held.length} new)` : "Resume") : "Pause";
+  if (es && es.readyState === 1) setLive(paused ? "paused" : "on", paused ? "Paused" : "Live");
+}
+
+function stopStream() {
+  if (es) { es.close(); es = null; }
+}
+
+function showLogs(id) {
+  stopStream();
+  logsId = id; paused = false; held = []; shown = 0;
+  const s = data.services.find((x) => x.id === id);
+  $("#logs-title").textContent = `${s.name} · logs`;
+  $("#logs-body").textContent = "";
+  $("#logs-clear").hidden = s.type === "supabase";
+  $("#logs-pause").hidden = s.type === "supabase";
+  updatePauseLabel();
+  setLive("", "Connecting…");
+  if (!$("#logs").open) $("#logs").showModal();
+
+  es = new EventSource(`/api/logs/stream?id=${encodeURIComponent(id)}`);
+  es.onopen = () => updatePauseLabel();
+  es.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.note) appendNote(msg.note);
+    if (msg.lines && msg.lines.length) {
+      if (paused) { held.push(...msg.lines); updatePauseLabel(); }
+      else appendLines(msg.lines);
+    }
+    if (msg.done) { stopStream(); setLive("", "Snapshot"); }
+  };
+  es.onerror = () => { if (es) setLive("off", "Reconnecting…"); };
+}
+
+$("#logs-pause").onclick = () => {
+  paused = !paused;
+  if (!paused && held.length) { appendLines(held); held = []; $("#logs-body").scrollTop = $("#logs-body").scrollHeight; }
+  updatePauseLabel();
+};
+
+$("#logs-clear").onclick = async () => {
+  const s = data.services.find((x) => x.id === logsId);
+  if (!confirm(`Clear the log for ${s.name}?`)) return;
+  const r = await fetch("/api/logs/clear", { method: "POST", headers: { "Content-Type": "application/json", "X-Dashboard": "1" },
+    body: JSON.stringify({ id: logsId }) });
+  if (r.ok) { $("#logs-body").textContent = ""; held = []; shown = 0; appendNote("Log cleared"); updatePauseLabel(); }
+  else appendNote("Could not clear the log");
+};
+
+$("#logs").addEventListener("close", stopStream);
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.act) act(b.dataset.id, b.dataset.act);
+  if (b.dataset.logs) showLogs(b.dataset.logs);
+  if (b.dataset.edit) openService(b.dataset.edit);
+  if (b.dataset.add) openService();
+});
+$("#logs-close").onclick = () => $("#logs").close();
+
+$("#stop-all").onclick = async () => {
+  const n = data.services.filter((s) => !s.planned && !s.unsupported && !s.external && (s.running || s.managed)).length;
+  if (!confirm(`Stop all ${n} running services?\n\nAll eligible configured services will be stopped. The dashboard itself keeps running.`)) return;
+  $("#stop-all").disabled = true;
+  $("#stop-all").textContent = "Stopping all…";
+  try { await api("/api/stop-all"); } catch (error) { alert(error.message); }
+  refresh();
+};
+
+$("#start-all").onclick = async () => {
+  $("#start-all").disabled = true;
+  $("#start-all").textContent = "Starting all…";
+  try { await api("/api/start-all"); } catch (error) { alert(error.message); }
+  refresh();
+};
+
+async function api(path, body = {}) {
+  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Dashboard": "1" }, body: JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Request failed");
+  return result;
+}
+
+let editingId = null, originalService = null;
+const form = $("#service-form");
+function serviceTypeChanged() {
+  const docker = form.elements.type.value === "docker";
+  document.querySelectorAll("[data-process]").forEach(el => { el.hidden = docker; el.querySelector("input").required = !docker; });
+  document.querySelectorAll("[data-docker]").forEach(el => { el.hidden = !docker; el.querySelector("input").required = docker; });
+}
+async function openService(id = null) {
+  editingId = id; originalService = null;
+  form.reset();
+  form.elements.id.readOnly = !!id;
+  $("#service-title").textContent = id ? "Edit service" : "Add a service";
+  $("#service-delete").hidden = !id;
+  $("#service-error").textContent = "";
+  $("#group-options").innerHTML = (data?.groups || []).map(g => `<option value="${esc(g)}"></option>`).join("");
+  if (id) {
+    try {
+      const response = await fetch("/api/services");
+      if (!response.ok) throw new Error("Could not load service settings");
+      const config = await response.json();
+      originalService = config.services.find(s => s.id === id);
+      if (!originalService) throw new Error("Service no longer exists");
+      for (const [key, value] of Object.entries(originalService)) if (form.elements.namedItem(key)) form.elements.namedItem(key).value = value;
+    } catch (error) { alert(error.message); return; }
+  }
+  serviceTypeChanged();
+  $("#service-dialog").showModal();
+}
+form.elements.type.onchange = serviceTypeChanged;
+form.elements.name.addEventListener("input", () => {
+  if (!editingId && !form.elements.id.dataset.manual) form.elements.id.value = form.elements.name.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64);
+});
+form.elements.id.addEventListener("input", () => { form.elements.id.dataset.manual = "1"; });
+$("#add-service").onclick = () => { delete form.elements.id.dataset.manual; openService(); };
+$("#service-close").onclick = () => $("#service-dialog").close();
+form.onsubmit = async event => {
+  event.preventDefault();
+  const service = { ...originalService, ...Object.fromEntries(new FormData(form)) };
+  service.port = Number(service.port); service.startTimeout = Number(service.startTimeout);
+  $("#service-save").disabled = true;
+  try {
+    await api("/api/services/save", { originalId: editingId, service });
+    $("#service-dialog").close(); await refresh();
+  } catch (error) { $("#service-error").textContent = error.message; }
+  finally { $("#service-save").disabled = false; }
+};
+$("#service-delete").onclick = async () => {
+  if (!confirm("Remove this service from the dashboard? Its project, container, and logs will be kept.")) return;
+  try { await api("/api/services/delete", { id: editingId }); $("#service-dialog").close(); await refresh(); }
+  catch (error) { $("#service-error").textContent = error.message; }
+};
+$("#guide-open").onclick = async () => {
+  $("#guide").showModal();
+  try {
+    const response = await fetch("/api/setup");
+    if (!response.ok) throw new Error("Setup information unavailable");
+    const setup = await response.json();
+    $("#setup-info").textContent = `${setup.platform} · Shell: ${setup.shell}\nSettings: ${setup.dataDir}\nTools found: ${Object.entries(setup.tools).filter(([,found]) => found).map(([name]) => name).join(", ") || "None detected"}`;
+  } catch (error) { $("#setup-info").textContent = error.message; }
+};
+$("#guide-close").onclick = () => $("#guide").close();
+$("#quit").onclick = async () => {
+  if (!confirm("Quit the dashboard? Services keep running. Stop all first if you want to stop them too.")) return;
+  try { await api("/api/quit"); stopStream(); $("#conn").textContent = "Dashboard closed. Reopen Dev Services to reconnect."; }
+  catch (error) { alert(error.message); }
+};
+
+// Tick uptimes every second without refetching.
+setInterval(() => {
+  document.querySelectorAll("[data-up]").forEach((el) => {
+    const since = parseFloat(el.dataset.up);
+    if (since) el.textContent = fmtDuration(Date.now() / 1000 + skew - since);
+  });
+}, 1000);
+
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>

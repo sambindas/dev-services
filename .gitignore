@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+logs/
+*.spec
+# Per-machine settings and runtime state must never be published.
+services.json
+processes.json
+.env
+.env.*
+.DS_Store
