@@ -12,3 +12,7 @@ processes.json
 .env.*
 .DS_Store
 packaging/preview.png
+dashboard-instance.json
+startup-error.log
+startup-error.html
+Start Dev Services.command

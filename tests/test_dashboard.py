@@ -1,4 +1,7 @@
 import json
+import errno
+import io
+from contextlib import redirect_stderr
 import importlib.util
 import os
 from pathlib import Path
@@ -16,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import platform_runtime as runtime
 import service_config
+import launcher
 
 
 def free_port():
@@ -212,6 +216,43 @@ class DockerAdapterTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.temp.cleanup()
+
+    def test_default_port_conflict_uses_next_free_port(self):
+        with patch.dict(os.environ):
+            os.environ.pop("DASHBOARD_PORT", None)
+            with patch.object(self.dashboard, "PORT", 31000), patch.object(self.dashboard, "same_instance", return_value=False), patch.object(self.dashboard, "ThreadingHTTPServer", side_effect=[OSError(errno.EADDRINUSE, "in use"), MagicMock()]) as factory, patch.object(service_config, "save"):
+                server = self.dashboard.select_server()
+                self.assertIsNotNone(server)
+                self.assertEqual(self.dashboard.PORT, 31001)
+                self.assertEqual([call.args[0] for call in factory.call_args_list], [("127.0.0.1", 31000), ("127.0.0.1", 31001)])
+
+    def test_explicit_port_conflict_is_reported(self):
+        with patch.dict(os.environ, {"DASHBOARD_PORT": "31000"}), patch.object(self.dashboard, "PORT", 31000), patch.object(self.dashboard, "same_instance", return_value=False), patch.object(self.dashboard, "ThreadingHTTPServer", side_effect=OSError(errno.EADDRINUSE, "in use")):
+            with self.assertRaisesRegex(RuntimeError, "occupied"):
+                self.dashboard.select_server()
+
+    def test_saved_instance_is_reused_even_when_default_port_is_free(self):
+        record = Path(self.temp.name) / self.dashboard.INSTANCE_FILE
+        service_config.save(record, {"port": 31001, "pid": 123})
+        try:
+            with patch.dict(os.environ):
+                os.environ.pop("DASHBOARD_PORT", None)
+                with patch.object(self.dashboard, "PORT", 31000), patch.object(self.dashboard, "same_instance", return_value=True), patch.object(self.dashboard, "ThreadingHTTPServer") as factory:
+                    self.assertIsNone(self.dashboard.select_server())
+                    self.assertEqual(self.dashboard.PORT, 31001)
+                    factory.assert_not_called()
+        finally:
+            record.unlink()
+
+    def test_launcher_preserves_startup_errors_without_browser(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fake_server = MagicMock()
+            fake_server.main.side_effect = RuntimeError("<address in use>")
+            with patch.dict(sys.modules, {"server": fake_server}), patch.dict(os.environ, {"DASHBOARD_DATA_DIR": folder}), patch.object(sys, "argv", ["DevServices", "--no-browser"]), patch.object(launcher.webbrowser, "open") as browser, redirect_stderr(io.StringIO()):
+                self.assertEqual(launcher.main(), 1)
+                browser.assert_not_called()
+            self.assertIn("address in use", (Path(folder) / "startup-error.log").read_text())
+            self.assertIn("&lt;address in use&gt;", (Path(folder) / "startup-error.html").read_text())
 
     def test_quit_flushes_response_before_shutdown(self):
         handler = self.dashboard.Handler.__new__(self.dashboard.Handler)

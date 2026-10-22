@@ -10,12 +10,12 @@ Download the **unsigned preview installers** from [GitHub Releases](https://gith
 | --- | --- | --- |
 | macOS Apple Silicon / Intel | `.dmg` | Open the matching image, drag DevServices to Applications, then open it. |
 | Windows x64 | `Windows-Setup.exe` | Run the installer as your normal user, then open Dev Services from Start. |
-| Ubuntu/Debian x64 | `.deb` | Install with `sudo apt install ./dev-services_0.2.2_amd64.deb`, then open Dev Services from the applications menu. |
+| Ubuntu/Debian x64 | `.deb` | Install with `sudo apt install ./dev-services_*_amd64.deb`, then open Dev Services from the applications menu. |
 | Other Linux x64 | `.tar.gz` | Extract it, then run `DevServices/DevServices`. Requires glibc 2.35 or newer; not an Alpine/musl package. |
 
 Python is bundled in these packages. Project runtimes and Docker are installed separately. Preview packages are not signed/notarized yet; Windows and macOS may display publisher warnings. Public distribution needs signing credentials and native-machine verification before calling the installers stable. Linux RPM and ARM Linux/Windows builds are not provided yet.
 
-The app opens `http://127.0.0.1:7777`. Opening it again reconnects to an existing instance. Closing the browser does not stop the backend. Use **Quit dashboard** to close the backend. Service processes stay running and are recognized when you reopen the app; use **Stop all** before quitting if you want to stop them.
+The app normally opens `http://127.0.0.1:7777`. If another application or an older dashboard uses that port, it automatically chooses a free port between 7777 and 7796. Reopening reconnects to the dashboard for your settings folder. An explicit `DASHBOARD_PORT` is respected. Closing the browser does not stop the backend. Use **Quit dashboard** to close the backend. Service processes stay running and are recognized when you reopen the app; use **Stop all** before quitting if you want to stop them.
 
 ## Run from source
 
@@ -46,6 +46,8 @@ A source checkout keeps its existing `services.json` and `logs` directory. Packa
 - Linux: `$XDG_DATA_HOME/dev-services`, defaulting to `~/.local/share/dev-services`
 
 Back up that directory to preserve configuration and logs. App updates and normal uninstallation leave this data intact. Do not distribute your personal `services.json`, logs, or credentials. The build script includes only the UI and Python application code/dependencies.
+
+If startup fails, the packaged app opens a local error page and saves `startup-error.log` in its settings folder. macOS Gatekeeper can block the app before this code runs: public Mac builds still need Developer ID signing and Apple notarization.
 
 ## Add a project command
 

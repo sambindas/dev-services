@@ -6,6 +6,7 @@ import sys
 import webbrowser
 import queue
 import argparse
+import errno
 import subprocess
 import threading
 import time
@@ -19,7 +20,9 @@ import service_config
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.path.expanduser("~")
+VERSION = "0.2.3"
 PORT = int(os.environ.get("DASHBOARD_PORT", "7777"))
+INSTANCE_FILE = "dashboard-instance.json"
 # Source checkouts retain their configuration. Distributed apps use user-writable data.
 DATA_DIR = Path(os.environ.get("DASHBOARD_DATA_DIR") or
                 (runtime.user_data_dir() if getattr(sys, "frozen", False) else HERE))
@@ -529,7 +532,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
         if u.path == "/api/health":
-            return self._send(200, {"app": "dev-services", "version": "0.2.2"})
+            return self._send(200, {"app": "dev-services", "version": VERSION, "dataDir": str(DATA_DIR.resolve())})
         if u.path == "/api/setup":
             return self._send(200, {"platform": runtime.SYSTEM, "tools": runtime.tools(ENV),
                                     "dataDir": str(DATA_DIR), "shell": os.environ.get("COMSPEC", "cmd.exe") if runtime.SYSTEM == "Windows" else runtime.shell_command("")[0]})
@@ -661,36 +664,86 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
 
 
+def same_instance(port):
+    """Reuse only the dashboard controlling this data folder, ignoring proxy settings."""
+    from urllib.request import build_opener, ProxyHandler
+    try:
+        opener = build_opener(ProxyHandler({}))
+        base = f"http://127.0.0.1:{port}"
+        with opener.open(base + "/api/health", timeout=1) as response:
+            health = json.loads(response.read(65536))
+        if health.get("app") != "dev-services":
+            return False
+        data_dir = health.get("dataDir")
+        if not data_dir:  # Older packaged versions expose their data folder through setup.
+            with opener.open(base + "/api/setup", timeout=1) as response:
+                data_dir = json.loads(response.read(65536)).get("dataDir")
+        return bool(data_dir) and Path(data_dir).resolve() == DATA_DIR.resolve()
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def select_server():
+    global PORT
+    explicit = "DASHBOARD_PORT" in os.environ
+    if not 1 <= PORT <= 65535:
+        raise RuntimeError("DASHBOARD_PORT must be a number from 1 to 65535.")
+    # Reopening the app should find its own controller even if an earlier port became free.
+    try:
+        previous = service_config.load(DATA_DIR / INSTANCE_FILE)
+        saved_port = previous.get("port")
+        if type(saved_port) is int and 1 <= saved_port <= 65535 and (not explicit or saved_port == PORT) and same_instance(saved_port):
+            PORT = saved_port
+            return None
+    except (OSError, ValueError, AttributeError):
+        pass
+    choices = [PORT] if explicit else range(PORT, min(PORT + 20, 65536))
+    for candidate in choices:
+        try:
+            controller = ThreadingHTTPServer(("127.0.0.1", candidate), Handler)
+        except OSError as error:
+            if error.errno not in (errno.EADDRINUSE, 10048):
+                raise
+            if same_instance(candidate):
+                PORT = candidate
+                return None
+            continue
+        PORT = candidate
+        try:
+            service_config.save(DATA_DIR / INSTANCE_FILE, {"port": PORT, "pid": os.getpid()})
+        except OSError:
+            controller.server_close()
+            raise
+        return controller
+    raise RuntimeError("The requested dashboard port is occupied. Close the older dashboard or set DASHBOARD_PORT to another port.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Local service dashboard")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser automatically")
     args = parser.parse_args()
+    server = select_server()
     url = f"http://127.0.0.1:{PORT}"
-    try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError:
-        # Opening twice should reopen the existing app, never start a second controller.
-        from urllib.request import urlopen
-        try:
-            with urlopen(url + "/api/health", timeout=2) as response:
-                existing = json.load(response)
-            if existing.get("app") == "dev-services":
-                if not args.no_browser:
-                    webbrowser.open(url)
-                return
-        except Exception:
-            pass
-        raise SystemExit(f"Port {PORT} is occupied. Set DASHBOARD_PORT to another port.")
+    if server is None:
+        if not args.no_browser:
+            webbrowser.open(url)
+        return
     if not args.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     if sys.stdout:
-        print(f"Dev Services: {url}  |  Settings: {CONFIG_FILE}")
+        print(f"Dev Services: {url}  |  Settings: {CONFIG_FILE}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        try:
+            record = service_config.load(DATA_DIR / INSTANCE_FILE)
+            if record.get("pid") == os.getpid():
+                (DATA_DIR / INSTANCE_FILE).unlink(missing_ok=True)
+        except (OSError, ValueError, AttributeError):
+            pass
 
 
 if __name__ == "__main__":
