@@ -62,9 +62,42 @@ def port_open(port):
     return False
 
 
+def listener_pids(ports):
+    """Best-effort listener identities for display, never process ownership."""
+    ports = set(ports)
+    found = {}
+    if not ports:
+        return found
+    if SYSTEM == "Darwin":
+        # macOS restricts psutil's system-wide connection inspection to root.
+        # lsof can still report this user's listeners without elevated privileges.
+        executable = shutil.which('lsof') or '/usr/sbin/lsof'
+        try:
+            result = subprocess.run([executable, '-nP', '-iTCP', '-sTCP:LISTEN', '-Fpn'],
+                                    capture_output=True, text=True, timeout=3)
+            pid = None
+            for line in result.stdout.splitlines():
+                if line.startswith('p'):
+                    pid = int(line[1:]) if line[1:].isdigit() else None
+                elif line.startswith('n') and pid:
+                    port = line.rsplit(':', 1)[-1]
+                    if port.isdigit() and int(port) in ports:
+                        found.setdefault(int(port), set()).add(pid)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    else:
+        try:
+            for connection in psutil.net_connections(kind='tcp'):
+                if connection.status == psutil.CONN_LISTEN and connection.pid and connection.laddr.port in ports:
+                    found.setdefault(connection.laddr.port, set()).add(connection.pid)
+        except (psutil.Error, OSError):
+            pass
+    return {port: sorted(pids) for port, pids in found.items()}
+
+
 def tools(env):
     return {name: bool(shutil.which(name, path=env["PATH"]))
-            for name in ("docker", "node", "npm", "python3", "python", "php", "dotnet", "brew", "supabase")}
+            for name in ("git", "docker", "node", "npm", "python3", "python", "php", "dotnet", "brew", "supabase")}
 
 
 class ProcessManager:
@@ -93,7 +126,14 @@ class ProcessManager:
                 return None
             try:
                 proc = psutil.Process(record["pid"])
-                if abs(proc.create_time() - record["created"]) < 0.01 and proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE:
+                # psutil's process hash uses a stable identity on macOS/Linux;
+                # wall-clock create_time() can shift after clock synchronization.
+                identity = record.get("identity")
+                matches = hash(proc) == identity if identity is not None else abs(proc.create_time() - record["created"]) < 0.01
+                if matches and proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE:
+                    if identity is None:
+                        record["identity"] = hash(proc)
+                        self._save()
                     return proc
             except psutil.Error:
                 pass
@@ -110,12 +150,13 @@ class ProcessManager:
                 proc = subprocess.Popen(shell_command(svc["cmd"]), cwd=svc["cwd"], env=env,
                                         stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **options)
             try:
-                created = psutil.Process(proc.pid).create_time()
+                identity = psutil.Process(proc.pid)
+                created = identity.create_time()
             except psutil.NoSuchProcess:
                 proc.wait()
                 raise RuntimeError("The start command exited immediately. Check the log.")
             self.handles[svc["id"]] = proc
-            self.records[svc["id"]] = {"pid": proc.pid, "created": created}
+            self.records[svc["id"]] = {"pid": proc.pid, "created": created, "identity": hash(identity)}
             self._save()
 
     def stop(self, svc):

@@ -29,6 +29,17 @@ def free_port():
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_macos_listener_lookup_filters_ports_and_deduplicates_ipv4_ipv6(self):
+        output = 'p123\nf7\nn[::1]:5432\nf8\nn127.0.0.1:5432\np456\nf9\nn*:9000\np999\nn*:7777\n'
+        with patch.object(runtime, 'SYSTEM', 'Darwin'), patch.object(runtime.subprocess, 'run', return_value=MagicMock(stdout=output)):
+            self.assertEqual(runtime.listener_pids({5432, 9000}), {5432: [123], 9000: [456]})
+
+    def test_listener_lookup_permission_failure_is_not_a_status_failure(self):
+        with patch.object(runtime, 'SYSTEM', 'Darwin'), patch.object(runtime.subprocess, 'run', side_effect=PermissionError):
+            self.assertEqual(runtime.listener_pids({5432}), {})
+        with patch.object(runtime, 'SYSTEM', 'Linux'), patch.object(runtime.psutil, 'net_connections', side_effect=runtime.psutil.AccessDenied):
+            self.assertEqual(runtime.listener_pids({5432}), {})
+
     def test_validation_and_atomic_persistence(self):
         with tempfile.TemporaryDirectory() as folder:
             svc = {"id": "api", "name": "API", "group": "Projects", "type": "process", "cwd": folder,
@@ -70,6 +81,34 @@ class ConfigurationTests(unittest.TestCase):
             manager = runtime.ProcessManager(folder)
             manager.records["fake"] = {"pid": os.getpid(), "created": 1}
             self.assertIsNone(manager.process("fake"))
+
+    def test_process_identity_survives_wall_clock_drift_and_dashboard_restart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            proc = MagicMock()
+            proc.create_time.return_value = 101
+            proc.status.return_value = runtime.psutil.STATUS_SLEEPING
+            manager = runtime.ProcessManager(folder)
+            manager.records['api'] = {'pid': 123, 'created': 100, 'identity': hash(proc)}
+            manager._save()
+            restored = runtime.ProcessManager(folder)
+            with patch.object(runtime.psutil, 'Process', return_value=proc):
+                self.assertIs(restored.process('api'), proc)
+                restored.records['api']['identity'] = hash(proc) + 1
+                self.assertIsNone(restored.process('api'))
+
+    def test_legacy_identity_migration_requires_exact_creation_time(self):
+        with tempfile.TemporaryDirectory() as folder:
+            proc = MagicMock()
+            proc.create_time.return_value = 101
+            proc.status.return_value = runtime.psutil.STATUS_SLEEPING
+            manager = runtime.ProcessManager(folder)
+            manager.records['api'] = {'pid': 123, 'created': 100}
+            with patch.object(runtime.psutil, 'Process', return_value=proc):
+                self.assertIsNone(manager.process('api'))
+                self.assertNotIn('identity', manager.records['api'])
+                proc.create_time.return_value = 100
+                self.assertIs(manager.process('api'), proc)
+                self.assertEqual(manager.records['api']['identity'], hash(proc))
 
 
 class DashboardIntegrationTests(unittest.TestCase):
@@ -203,6 +242,23 @@ class DashboardIntegrationTests(unittest.TestCase):
             self.assertIn("outside", row["busy"]["error"])
             self.assertIsNotNone(listener.getsockname())
 
+    def test_pull_endpoint_reports_failure_and_preserves_service(self):
+        service = self.add_service()
+        self.assert_status(400, "/api/action", {"id": service["id"], "action": "pull"})
+        project = Path(self.temp.name) / "project"
+        project.mkdir()
+        subprocess.run(["git", "init", str(project)], check=True, capture_output=True)
+        service["cwd"] = str(project)
+        self.request("/api/services/save", {"originalId": service["id"], "service": service})
+        self.assertTrue(self.request("/api/status")["services"][0]["canPull"])
+        self.assert_status(403, "/api/action", {"id": service["id"], "action": "pull"}, headers={"Content-Type": "application/json"})
+        self.request("/api/action", {"id": service["id"], "action": "pull"})
+        row = self.wait_row(lambda row: row.get("pull", {}).get("done"))
+        self.assertTrue(row["pull"]["error"])
+        self.assertTrue(row["busy"]["done"])
+        self.assertFalse(row["running"])
+        self.assertTrue(row["pull"]["output"])
+
 
 class DockerAdapterTests(unittest.TestCase):
     @classmethod
@@ -216,6 +272,32 @@ class DockerAdapterTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.temp.cleanup()
+
+    def test_unmanaged_listener_identity_does_not_grant_ownership(self):
+        svc = {'id': 'api', 'name': 'API', 'type': 'process', 'port': 32100}
+        config = {'services': [svc]}
+        with patch.object(self.dashboard, 'load_config', return_value=config), patch.object(runtime, 'port_open', return_value=True), patch.object(self.dashboard.processes, 'process', return_value=None), patch.object(runtime, 'listener_pids', return_value={32100: [123]}), patch.object(self.dashboard, 'proc_info', return_value={123: (1, 100, 'test')}):
+            row = self.dashboard.status()['services'][0]
+        self.assertTrue(row['external'])
+        self.assertFalse(row['managed'])
+        self.assertFalse(row['running'])
+        self.assertEqual(self.dashboard.processes.records, {})
+
+    def test_homebrew_listener_reports_pid_and_real_start_time(self):
+        config = {'services': [{'id': 'postgres', 'type': 'brew', 'port': 5432}]}
+        with patch.object(runtime, 'SYSTEM', 'Darwin'), patch.object(self.dashboard, 'load_config', return_value=config), patch.object(runtime, 'port_open', return_value=True), patch.object(self.dashboard.processes, 'process', return_value=None), patch.object(runtime, 'listener_pids', return_value={5432: [123]}), patch.object(self.dashboard, 'proc_info', return_value={123: (1, 100, 'postgres')}):
+            row = self.dashboard.status()['services'][0]
+        self.assertTrue(row['running'])
+        self.assertEqual(row['since'], 100)
+        self.assertEqual(row['detail'], 'pid 123')
+
+    def test_homebrew_listener_without_pid_keeps_availability(self):
+        config = {'services': [{'id': 'postgres', 'type': 'brew', 'port': 5432}]}
+        with patch.object(runtime, 'SYSTEM', 'Darwin'), patch.object(self.dashboard, 'load_config', return_value=config), patch.object(runtime, 'port_open', return_value=True), patch.object(self.dashboard.processes, 'process', return_value=None), patch.object(runtime, 'listener_pids', return_value={}):
+            row = self.dashboard.status()['services'][0]
+        self.assertTrue(row['running'])
+        self.assertIsNone(row['since'])
+        self.assertEqual(row['detail'], 'listening; process details unavailable')
 
     def test_default_port_conflict_uses_next_free_port(self):
         with patch.dict(os.environ):

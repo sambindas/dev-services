@@ -17,6 +17,7 @@ from pathlib import Path
 
 import platform_runtime as runtime
 import service_config
+import git_ops
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.path.expanduser("~")
@@ -52,13 +53,15 @@ def run(cmd, timeout=20, cwd=None):
 # ---------- status probes ----------
 
 def listening_ports():
-    """Check configured loopback ports without requiring privileged OS-wide inspection."""
+    """Probe availability, then look up unknown listener identities for display."""
     ports = {}
     for svc in load_config()["services"]:
         port = svc.get("port")
         if port and runtime.port_open(port):
             proc = processes.process(svc["id"])
             ports[port] = [proc.pid] if proc else [0]
+    unknown = {port for port, pids in ports.items() if pids == [0]}
+    ports.update(runtime.listener_pids(unknown))
     return ports
 
 
@@ -119,6 +122,7 @@ def docker_desktop_since():
 
 busy = {}          # id -> {"action", "since", "error"}
 busy_lock = threading.Lock()
+pull_results = {}  # last pull progress/result per service, separate from lifecycle actions
 
 
 def port_open(port):
@@ -200,12 +204,24 @@ def do_action(svc, action):
 
 def action_thread(svc, action):
     try:
-        do_action(svc, action)
+        if action == "pull":
+            def report(output):
+                with busy_lock:
+                    pull_results[svc["id"]] = {"output": output, "done": False}
+            git_ops.pull(svc.get("cwd"), ENV, report)
+            with busy_lock:
+                pull_results[svc["id"]]["done"] = True
+        else:
+            do_action(svc, action)
         with busy_lock:
             busy.pop(svc["id"], None)
     except Exception as e:  # surfaced in the UI
         with busy_lock:
-            busy[svc["id"]] = {"action": action, "since": time.time(), "error": str(e), "done": True}
+            if action == "pull":
+                previous = pull_results.get(svc["id"], {}).get("output", "")
+                pull_results[svc["id"]] = {"output": previous + "\n\n" + str(e), "done": True, "error": True}
+            message = (str(e).splitlines()[0][:300] + " See Pull output.") if action == "pull" else str(e)
+            busy[svc["id"]] = {"action": action, "since": time.time(), "error": message, "done": True}
 
 
 # Start/stop everything, in dependency order (stop runs the stages in reverse).
@@ -256,6 +272,7 @@ def status():
         row["running"], row["since"], row["detail"] = False, None, ""
         row["editable"] = s["type"] in service_config.EDITABLE_TYPES
         row["unsupported"] = s["type"] in ("brew", "app") and runtime.SYSTEM != "Darwin"
+        row["canPull"] = s["type"] in ("process", "supabase") and not s.get("planned") and git_ops.repository(s.get("cwd")) is not None
         if row["unsupported"]:
             row["detail"] = "Available on macOS only"
         elif s.get("planned"):
@@ -265,7 +282,7 @@ def status():
             row["running"] = bool(pids)
             starts = [pinfo[p][1] for p in pids if p in pinfo]
             row["since"] = min(starts) if starts else None
-            row["detail"] = f"pid {', '.join(map(str, pids))}" if pids and pids != [0] else ("port in use" if pids else "not listening")
+            row["detail"] = f"pid {', '.join(map(str, pids))}" if pids and pids != [0] else ("listening; process details unavailable" if pids else "not listening")
             if s["type"] == "process":
                 managed = processes.process(s["id"])
                 row["managed"] = managed is not None
@@ -293,6 +310,7 @@ def status():
             row["detail"] = "engine up" if docker_up else "engine not reachable"
         with busy_lock:
             b = busy.get(s["id"])
+            row["pull"] = pull_results.get(s["id"])
         if b:
             row["busy"] = b
         out.append(row)
@@ -592,12 +610,16 @@ class Handler(BaseHTTPRequestHandler):
             clear_logs(svc)
             return self._send(200, {"ok": True})
         action = body.get("action")
-        if not svc or svc.get("planned") or (svc["type"] in ("brew", "app") and runtime.SYSTEM != "Darwin") or action not in ("start", "restart", "stop"):
+        if not svc or svc.get("planned") or (svc["type"] in ("brew", "app") and runtime.SYSTEM != "Darwin") or action not in ("start", "restart", "stop", "pull"):
             return self._send(400, {"error": "bad request"})
+        if action == "pull" and (svc["type"] not in ("process", "supabase") or git_ops.repository(svc.get("cwd")) is None):
+            return self._send(400, {"error": "This service has no Git project folder."})
         with busy_lock:
             if svc["id"] in busy and not busy[svc["id"]].get("done"):
                 return self._send(409, {"error": "already busy"})
             busy[svc["id"]] = {"action": action, "since": time.time()}
+            if action == "pull":
+                pull_results[svc["id"]] = {"output": "Preparing pull…", "done": False}
         threading.Thread(target=action_thread, args=(svc, action), daemon=True).start()
         self._send(202, {"ok": True})
 

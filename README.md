@@ -71,6 +71,14 @@ Commands use `cmd.exe` on Windows and your configured shell on macOS/Linux. Vers
 
 The app tracks PID and process creation time, persists ownership across dashboard restarts, and stops the managed process tree. It will not terminate an independently started process merely because it occupies the configured port. Stop such a process from its original terminal first. Processes that detach from their parent are not supported.
 
+## Pull project updates
+
+Git project services show a **Pull** button when their configured folder is inside a repository (including project subfolders and Git worktrees). Install Git separately and configure authentication in your terminal first; Dev Services uses this computer's existing Git credentials. No credentials are stored in the dashboard.
+
+Pull checks for uncommitted and untracked files, requires an attached branch with a configured upstream, and runs a fast-forward-only pull. It never stashes local work or creates a merge commit for diverged branches. **Pull output** shows progress, the branch/upstream and the last result until the dashboard backend exits. Services sharing a repository cannot pull it simultaneously.
+
+Pull updates the whole repository. Stop services first if they reload automatically when files change. Dependency installation, build steps and restarting remain manual. Docker image pulls and Pull & Restart are not included.
+
 ## Add an existing Docker container
 
 1. Install Docker and start its engine.

@@ -88,6 +88,8 @@
   .empty { padding: 36px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; }
   .empty h2 { font-size: 18px; text-transform: none; color: var(--text); }
   #guide-body { padding: 4px 22px 22px; }
+  #pull-state { padding: 0 16px; }
+  .row > .actions { flex-wrap: wrap; max-width: 340px; }
   #guide-body h4 { margin-bottom: 6px; }
   #setup-info { white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (max-width: 760px) {
@@ -99,14 +101,104 @@
     .row > .info { grid-area: name; } .row > .port { grid-area: port; } .row > .state { grid-area: state; }
     .row > .actions { grid-area: actions; justify-content: flex-start; }
   }
+  /* A quieter workspace, with room for both service details and controls. */
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6fa; --text: #222738; --muted: #6b7489; --line: #e5e8f0;
+    --accent: #4f46e5; --btn: #fff; --btn-hover: #f0f1fb;
+    --soft-accent: #eeedff; --accent-text: #fff; --hover-row: #fafaff;
+    --shadow: 0 2px 8px #25345b04, 0 12px 32px #25345b04;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1118; --panel: #151a24; --text: #e8ecf5; --muted: #97a1b5;
+      --line: #272e3d; --accent: #a5b4fc; --btn: #1b2230; --btn-hover: #273046;
+      --soft-accent: #222b48; --accent-text: #131a34; --hover-row: #19202d;
+      --shadow: 0 4px 24px #00000015;
+    }
+  }
+  body { line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1240px; padding: 38px 28px 48px; }
+  header { align-items: center; gap: 22px; margin-bottom: 32px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand-mark { width: 44px; height: 44px; border: 1px solid color-mix(in srgb,var(--accent) 25%,var(--line)); border-radius: 13px; display: grid; place-items: center; background: var(--soft-accent); color: var(--accent); flex-shrink: 0; }
+  .eyebrow { margin-bottom: 2px; color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .13em; text-transform: uppercase; }
+  h1 { font-size: 25px; line-height: 1.25; letter-spacing: -.04em; font-weight: 700; }
+  .summary { margin-top: 7px; font-size: 12px; }
+  .head-right { gap: 8px; flex-wrap: wrap; }
+  .conn { width: 100%; text-align: right; font-size: 11px; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
+  #start-all, #stop-all { padding: 8px 12px; }
+  section { margin-bottom: 28px; }
+  h2 { display: flex; align-items: center; gap: 9px; font-size: 11px; letter-spacing: .1em; margin: 0 0 10px 2px; }
+  .section-count { display: inline-grid; place-items: center; min-width: 21px; height: 20px; padding: 0 5px; border-radius: 6px; background: var(--btn); border: 1px solid var(--line); font-size: 10px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  .list { border-radius: 14px; box-shadow: var(--shadow); }
+  .row { grid-template-columns: 14px minmax(0,1.6fr) 62px minmax(0,1.25fr) auto; gap: 16px; padding: 17px 20px; transition: background .15s; }
+  .row:hover { background: var(--hover-row); }
+  .dot { width: 7px; height: 7px; }
+  .dot.up { box-shadow: 0 0 0 4px color-mix(in srgb,var(--up) 10%,transparent); }
+  .info { min-width: 0; }
+  .name { font-size: 13px; letter-spacing: -.01em; }
+  .name a { display: block; width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 11px; margin: 2px 0 0; color: var(--muted); }
+  .name a:hover { color: var(--accent); }
+  .notes { font-size: 11px; margin-top: 3px; }
+  .port { font-size: 11px; font-variant-numeric: tabular-nums; }
+  .state { font-size: 12px; }
+  .state .main { font-variant-numeric: tabular-nums; }
+  .state .sub { margin-top: 4px; font-size: 10px; }
+  .status-label { color: var(--up); font-weight: 600; }
+  .actions { gap: 5px; }
+  button { padding: 7px 10px; font-size: 11px; font-weight: 550; border-radius: 7px; transition: background .15s, border-color .15s; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  button.primary { color: var(--accent-text); }
+  .row button[data-act="restart"] { background: var(--soft-accent); border-color: transparent; color: var(--accent); }
+  .row button[data-act="restart"]:hover:not(:disabled) { background: color-mix(in srgb,var(--accent) 18%,var(--panel)); filter: none; }
+  button[data-act="stop"]:hover:not(:disabled), #stop-all:hover:not(:disabled) { color: var(--err); border-color: color-mix(in srgb,var(--err) 40%,var(--line)); }
+  button:disabled { opacity: .38; }
+  footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; border-top: 1px solid var(--line); margin-top: 32px; font-size: 11px; }
+  footer .local-label { display: inline-flex; align-items: center; gap: 7px; color: var(--text); font-weight: 600; margin-right: 10px; }
+  footer .local-label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--up); }
+  dialog { border-radius: 16px; box-shadow: 0 24px 90px #0004; }
+  dialog::backdrop { background: #050b1880; backdrop-filter: blur(4px); }
+  .dlg-head { padding: 17px 20px; }
+  .form-grid { gap: 18px; }
+  input, select, textarea { padding: 11px; border-radius: 8px; }
+  label { font-size: 12px; }
+  @media (max-width: 1100px) {
+    header { align-items: flex-start; }
+    .head-right { max-width: 100%; }
+    .row { grid-template-columns: 14px minmax(0,1fr) 65px minmax(150px,.8fr); grid-template-areas: 'dot name port state' '. actions actions actions'; gap: 9px 16px; }
+    .row > .dot { grid-area: dot; align-self: center; margin-top: 0; }
+    .row > .info { grid-area: name; }
+    .row > .port { grid-area: port; }
+    .row > .state { grid-area: state; }
+    .row > .actions { grid-area: actions; justify-content: flex-start; max-width: none; margin-top: 3px; }
+    .name a { display: inline; margin-left: 8px; }
+    .conn { text-align: left; }
+  }
+  @media (max-width: 600px) {
+    .wrap { padding: 24px 16px 32px; }
+    header { gap: 18px; margin-bottom: 26px; }
+    .head-right { width: 100%; }
+    #start-all, #stop-all { padding: 7px 10px; }
+    .row { padding: 16px; grid-template-columns: 10px minmax(0,1fr) auto; grid-template-areas: 'dot name port' '. state state' '. actions actions'; gap: 8px 12px; }
+    .name a { display: block; margin: 2px 0 0; }
+    .state .sub { white-space: normal; }
+    footer { align-items: flex-start; }
+    footer .local-label { display: flex; margin-bottom: 5px; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 6 6 6-6 6m8 0h6"/></svg></span>
+      <div>
+      <div class="eyebrow">Your development workspace</div>
       <h1>Dev Services</h1>
       <div class="summary" id="summary">Loading…</div>
+      </div>
     </div>
     <div class="head-right">
       <div class="conn" id="conn"></div>
@@ -118,7 +210,7 @@
   </header>
   <main id="groups"></main>
   <footer>
-    Services run on this computer. Status refreshes every 4 seconds.
+    <div><span class="local-label">Local workspace</span>Services run on this computer · Refreshes every 4 seconds</div>
     <button id="quit">Quit dashboard</button>
   </footer>
 </div>
@@ -159,6 +251,7 @@
     <h4>Platform details</h4>
     <p>Windows commands use cmd.exe. macOS/Linux commands use your configured shell. If a command needs nvm or another version manager, load it in the start command or use an absolute executable path. Relaunch after installing new tools.</p>
     <h4>Troubleshooting</h4>
+    <p>Git project folders show a Pull button. Configure Git authentication and an upstream branch in your terminal first. Pull updates the whole repository, stops on local changes or diverged branches, and shows its result in Pull output. Stop services first if they reload automatically. Install dependencies and restart separately after pulling.</p>
     <p>Check Logs after a failed start. A port conflict means you need another port or must stop the existing process. Processes started outside the dashboard must first be stopped in their original terminal. Stop services before editing or removing them.</p>
     <p>Your configuration and logs stay on this computer. Closing the browser leaves the dashboard running. Quit dashboard stops its controller; managed services keep running and reconnect when you reopen it.</p>
     <h4>This computer</h4><p id="setup-info" class="hint">Loading…</p>
@@ -172,11 +265,40 @@
   <pre id="logs-body"></pre>
 </dialog>
 
+<dialog id="pull-dialog">
+  <div class="dlg-head"><h3 id="pull-title">Git pull</h3><div class="actions"><button id="pull-close">Close</button></div></div>
+  <p id="pull-state" role="status"></p>
+  <pre id="pull-output" style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow: auto"></pre>
+</dialog>
+
 <script>
 const $ = (s) => document.querySelector(s);
 let data = null, skew = 0, logsId = null;
 
-const VERB = { start: "Starting", restart: "Restarting", stop: "Stopping" };
+const VERB = { start: "Starting", restart: "Restarting", stop: "Stopping", pull: "Pulling" };
+let pullId = null;
+
+function renderPull() {
+  if (!pullId || !$("#pull-dialog").open) return;
+  const s = data.services.find(s => s.id === pullId), result = s?.pull;
+  $("#pull-title").textContent = `Git pull · ${s?.name || pullId}`;
+  $("#pull-state").textContent = !result ? "Ready" : !result.done ? "Pull in progress…" : result.error ? "Pull failed" : "Pull complete";
+  $("#pull-output").textContent = result?.output || "No pull output yet.";
+}
+
+async function showPull(id, start = false) {
+  const s = data.services.find(s => s.id === id);
+  if (start && !confirm(`Pull updates for ${s.name}?\n\nThis updates files in its Git repository, which may also contain other services. Local changes and diverged branches will stop the pull. ${s.running || s.managed ? "The service is running; stop it first if it reloads automatically. " : ""}Restarting and installing dependencies are separate steps.`)) return;
+  pullId = id;
+  if (start) {
+    try { await api("/api/action", { id, action: "pull" }); }
+    catch (error) { alert(error.message); return; }
+    await refresh();
+  }
+  if (!$("#pull-dialog").open) $("#pull-dialog").showModal();
+  renderPull();
+}
+$("#pull-close").onclick = () => $("#pull-dialog").close();
 
 function fmtDuration(sec) {
   sec = Math.max(0, Math.floor(sec));
@@ -202,8 +324,8 @@ function stateHtml(s) {
     return `<div class="main">${VERB[s.busy.action]}… <span class="sub">${fmtDuration(t)}</span></div><div class="sub">${esc(s.detail)}</div>`;
   }
   let html = s.running
-    ? `<div class="main">Running · <span data-up="${s.since ?? ""}">${s.since ? fmtDuration(Date.now() / 1000 + skew - s.since) : "?"}</span></div>
-       <div class="sub">${s.since ? "since " + fmtSince(s.since) : ""}${s.detail ? " · " + esc(s.detail) : ""}</div>`
+    ? `<div class="main"><span class="status-label">Running</span>${s.since ? ` · <span data-up="${s.since}">${fmtDuration(Date.now() / 1000 + skew - s.since)}</span>` : " · uptime unavailable"}</div>
+       <div class="sub">${[s.since ? "since " + fmtSince(s.since) : "", s.detail ? esc(s.detail) : ""].filter(Boolean).join(" · ")}</div>`
     : `<div class="main">${s.managed ? "Process active" : "Stopped"}</div><div class="sub">${esc(s.detail)}</div>`;
   if (s.busy && s.busy.error) html += `<div class="error">${VERB[s.busy.action]} failed: ${esc(s.busy.error)}</div>`;
   return html;
@@ -234,7 +356,7 @@ function render() {
   $("#groups").innerHTML = groups.map((g) => {
     const items = data.services.filter((s) => s.group === g);
     if (!items.length) return "";
-    return `<section><h2>${esc(g)}</h2><div class="list">${items.map((s) => {
+    return `<section><h2>${esc(g)}<span class="section-count">${items.length}</span></h2><div class="list">${items.map((s) => {
       const working = s.busy && !s.busy.done;
       const btns = s.planned || s.unsupported || s.external ? "" : `
         ${s.running || s.managed
@@ -248,7 +370,7 @@ function render() {
           <div class="notes">${esc(s.notes)}</div></div>
         <div class="port">${s.port ? ":" + s.port : ""}</div>
         <div class="state">${stateHtml(s)}</div>
-        <div class="actions">${btns}${s.editable ? `<button data-edit="${esc(s.id)}" ${working || s.running || s.managed ? "disabled" : ""}>Edit</button>` : ""}</div>
+        <div class="actions">${btns}${s.canPull ? `<button data-pull="${esc(s.id)}" ${working || data.bulk ? "disabled" : ""}>Pull</button>` : ""}${s.pull ? `<button data-pull-output="${esc(s.id)}">Pull output</button>` : ""}${s.editable ? `<button data-edit="${esc(s.id)}" ${working || s.running || s.managed ? "disabled" : ""}>Edit</button>` : ""}</div>
       </div>`;
     }).join("")}</div></section>`;
   }).join("");
@@ -264,6 +386,7 @@ async function refresh() {
     $("#conn").textContent = "Updated " + new Date().toLocaleTimeString();
     $("#conn").className = "conn";
     render();
+    renderPull();
   } catch (e) {
     $("#conn").textContent = "Dashboard disconnected. Open Dev Services to reconnect.";
     $("#conn").className = "conn bad";
@@ -363,6 +486,8 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
   if (b.dataset.act) act(b.dataset.id, b.dataset.act);
+  if (b.dataset.pull) showPull(b.dataset.pull, true);
+  if (b.dataset.pullOutput) showPull(b.dataset.pullOutput);
   if (b.dataset.logs) showLogs(b.dataset.logs);
   if (b.dataset.edit) openService(b.dataset.edit);
   if (b.dataset.add) openService();
