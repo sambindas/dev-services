@@ -558,6 +558,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, load_config())
         if u.path == "/api/status":
             return self._send(200, status())
+        if u.path == "/api/logs/snapshot":
+            sid = parse_qs(u.query).get("id", [""])[0]
+            svc = next((s for s in load_config()["services"] if s["id"] == sid), None)
+            if not svc or svc.get("planned") or svc["type"] in ("app", "supabase"):
+                return self._send(400, {"error": "This service has no supported log snapshot."})
+            if svc["type"] == "docker":
+                code, text = run(["docker", "logs", "--tail", "200", svc["container"]], timeout=10)
+                if code:
+                    return self._send(400, {"error": "Docker logs are unavailable."})
+            else:
+                path = log_path(svc)
+                text = "No log yet."
+                if os.path.exists(path):
+                    with open(path, "rb") as stream:
+                        stream.seek(max(0, os.path.getsize(path) - 32768))
+                        text = stream.read(32768).decode("utf-8", "replace")
+            return self._send(200, {"text": text[-32768:]})
         if u.path == "/api/logs/stream":
             sid = parse_qs(u.query).get("id", [""])[0]
             svc = next((s for s in load_config()["services"] if s["id"] == sid), None)

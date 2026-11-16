@@ -8,6 +8,8 @@ logs/
 # Per-machine settings and runtime state must never be published.
 services.json
 processes.json
+remote-agent.json
+*.sqlite3
 .env
 .env.*
 .DS_Store

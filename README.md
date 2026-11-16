@@ -1,6 +1,60 @@
 # Dev Services
 
-A local dashboard for starting, stopping, restarting and viewing logs from your projects and existing Docker containers. It opens in your browser and runs only on the loopback interface of your computer. There are no cloud accounts or remote agents in this release.
+A dashboard for starting, stopping, restarting and viewing logs from your projects and existing Docker containers. The default local controller runs only on your computer's loopback interface. The optional hosted preview connects to it through an explicitly paired local agent.
+
+## Hosted preview and local agent
+
+The optional hosted preview adds user accounts and paired local agents. It runs
+`cloud_server.py`, a separate relay that does not import the local process
+controller and cannot execute project commands on the hosting server.
+
+Use a Render **Free web service** with:
+
+- Build: `pip install -r requirements-cloud.txt`
+- Start: `python cloud_server.py`
+- Health endpoint: `/api/health`
+- `DATABASE_URL`: a persistent PostgreSQL database, such as a Neon **Free** project.
+- `PUBLIC_ORIGIN`: the exact HTTPS origin, without a trailing slash. Render's
+  `RENDER_EXTERNAL_URL` is used automatically if this variable is omitted.
+
+`.python-version` selects Python 3.12. Database tables are initialized on startup.
+Production refuses SQLite: temporary hosting files must not hold user accounts
+or pairing data. Session, pairing and device tokens are stored as hashes;
+passwords use scrypt. Sessions last seven days; one-time pairing codes expire
+after ten minutes. Accounts use usernames; password recovery is not available
+in this preview. Do not use a password you use elsewhere.
+
+Users download the source agent through **Pair computer**, configure projects
+locally, then explicitly pair it to their account. See [AGENT.md](AGENT.md).
+Existing packaged preview installers do not yet bundle the agent. The agent
+requires Python 3.10+, opens no inbound port, and polls the relay over HTTPS.
+Pairing and runtime files remain excluded from Git and downloads.
+
+The hosted dashboard supports start, stop, restart, bulk controls, computer
+selection/revocation, and refreshed log snapshots. Project creation, editing,
+Git pulls, and log clearing remain in the local dashboard. Only locally
+configured service IDs can be controlled; remote shell commands are rejected.
+Users explicitly authorize sharing service status and requested log contents
+when pairing. Configure log redaction in your applications before pairing.
+
+Commands expire if undelivered after 30 seconds. Delivered commands are never
+automatically replayed after connection loss; an uncertain result requires
+checking the actual service status before retrying. The agent keeps a bounded
+local receipt journal to avoid duplicate execution across restarts. The latest
+200 configured services are published, and log snapshots are capped at 32 KB.
+Cloud command records and requested log snapshots expire after 24 hours.
+
+Free plans have usage limits. Render's free web services share the workspace's
+monthly free instance hours; an active agent keeps its relay active. Neon also
+has monthly compute/storage allowances. This is a free-tier preview, not a
+promise of unlimited always-on service. Local project control continues to work
+if hosting is asleep, unavailable, or out of quota. No paid upgrades are enabled
+by this configuration.
+
+Tests use an isolated temporary SQLite database by default. To also test
+PostgreSQL, provide `CLOUD_TEST_DATABASE_URL` pointing only to a disposable
+database whose name starts with `dev_services_test_` (its cloud tables are cleared
+between tests), and run `python -m unittest discover -s tests -p test_cloud.py`.
 
 ## Install a packaged build
 

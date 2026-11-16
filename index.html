@@ -18,6 +18,7 @@
     }
   }
   [hidden] { display: none !important; }
+  body[data-cloud] #logs-clear { display: none; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
@@ -374,7 +375,9 @@ function render() {
       </div>`;
     }).join("")}</div></section>`;
   }).join("");
-  if (!data.services.length) $("#groups").innerHTML = `<div class="empty"><h2>Your services, in one place</h2><p>Add a project or Docker container to see its status, controls, and logs here.</p><button class="primary" data-add="1">Add your first service</button></div>`;
+  if (!data.services.length) $("#groups").innerHTML = window.DEV_SERVICES_CLOUD
+    ? `<div class="empty"><h2>Your projects, connected.</h2><p>Pair your computer and configure projects in its local dashboard to control them from here.</p><button class="primary" data-cloud-pair="1">Pair a computer</button></div>`
+    : `<div class="empty"><h2>Your services, in one place</h2><p>Add a project or Docker container to see its status, controls, and logs here.</p><button class="primary" data-add="1">Add your first service</button></div>`;
 }
 
 async function refresh() {
@@ -402,7 +405,7 @@ async function act(id, action) {
 
 // ---- live logs (server-sent events) ----
 const MAX_LINES = 5000;
-let es = null, paused = false, held = [], shown = 0;
+let es = null, paused = false, held = [], shown = 0, heldSnapshot = false;
 
 function setLive(state, text) {
   const el = $("#logs-live");
@@ -441,7 +444,7 @@ function stopStream() {
 
 function showLogs(id) {
   stopStream();
-  logsId = id; paused = false; held = []; shown = 0;
+  logsId = id; paused = false; held = []; shown = 0; heldSnapshot = false;
   const s = data.services.find((x) => x.id === id);
   $("#logs-title").textContent = `${s.name} · logs`;
   $("#logs-body").textContent = "";
@@ -457,6 +460,10 @@ function showLogs(id) {
     const msg = JSON.parse(ev.data);
     if (msg.note) appendNote(msg.note);
     if (msg.lines && msg.lines.length) {
+      if (msg.replace) {
+        if (paused) { held = msg.lines; heldSnapshot = true; updatePauseLabel(); return; }
+        $("#logs-body").textContent = ""; held = []; shown = 0;
+      }
       if (paused) { held.push(...msg.lines); updatePauseLabel(); }
       else appendLines(msg.lines);
     }
@@ -467,7 +474,10 @@ function showLogs(id) {
 
 $("#logs-pause").onclick = () => {
   paused = !paused;
-  if (!paused && held.length) { appendLines(held); held = []; $("#logs-body").scrollTop = $("#logs-body").scrollHeight; }
+  if (!paused && held.length) {
+    if (heldSnapshot) { $("#logs-body").textContent = ""; shown = 0; heldSnapshot = false; }
+    appendLines(held); held = []; $("#logs-body").scrollTop = $("#logs-body").scrollHeight;
+  }
   updatePauseLabel();
 };
 
